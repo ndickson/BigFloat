@@ -65,14 +65,14 @@ struct BigFloat {
 		*this <<= exponent_;
 	}
 
-	constexpr BigFloat(int64 v) noexcept;
-	constexpr BigFloat(uint64 v) noexcept;
-	constexpr BigFloat(int8 v) noexcept : BigFloat(int64(v)) {}
-	constexpr BigFloat(uint8 v) noexcept : BigFloat(uint64(v)) {}
-	constexpr BigFloat(int16 v) noexcept : BigFloat(int64(v)) {}
-	constexpr BigFloat(uint16 v) noexcept : BigFloat(uint64(v)) {}
-	constexpr BigFloat(int32 v) noexcept : BigFloat(int64(v)) {}
-	constexpr BigFloat(uint32 v) noexcept : BigFloat(uint64(v)) {}
+	constexpr explicit BigFloat(int64 v) noexcept;
+	constexpr explicit BigFloat(uint64 v) noexcept;
+	constexpr explicit BigFloat(int8 v) noexcept : BigFloat(int64(v)) {}
+	constexpr explicit BigFloat(uint8 v) noexcept : BigFloat(uint64(v)) {}
+	constexpr explicit BigFloat(int16 v) noexcept : BigFloat(int64(v)) {}
+	constexpr explicit BigFloat(uint16 v) noexcept : BigFloat(uint64(v)) {}
+	constexpr explicit BigFloat(int32 v) noexcept : BigFloat(int64(v)) {}
+	constexpr explicit BigFloat(uint32 v) noexcept : BigFloat(uint64(v)) {}
 	constexpr BigFloat& operator=(int64 v) noexcept;
 	constexpr BigFloat& operator=(uint64 v) noexcept;
 	constexpr BigFloat& operator=(int8 v) noexcept { *this = int64(v); return *this; }
@@ -83,10 +83,10 @@ struct BigFloat {
 	constexpr BigFloat& operator=(uint32 v) noexcept { *this = uint64(v); return *this; }
 	/// NOTE: This can't be constexpr, because unfortunately,
 	///       the C++ standard doesn't allow accessing the bits of a double.
-	BigFloat(double v) noexcept;
+	explicit BigFloat(double v) noexcept;
 	/// Conversion from BigFloat with a different N.
 	template<size_t OTHERN>
-	constexpr BigFloat(const BigFloat<OTHERN>& that) noexcept;
+	constexpr explicit BigFloat(const BigFloat<OTHERN>& that) noexcept;
 	/// Conversion from BigFloat with a different N.
 	template<size_t OTHERN>
 	constexpr BigFloat& operator=(const BigFloat<OTHERN>& that) noexcept;
@@ -110,9 +110,10 @@ struct BigFloat {
 	constexpr BigFloat operator+(const BigFloat& other) const noexcept;
 	/// Unary negation operator
 	constexpr BigFloat operator-() const noexcept;
+	/// Unary plus operator
+	constexpr BigFloat operator+() const noexcept;
 	constexpr void operator-=(const BigFloat& other) noexcept;
 	constexpr BigFloat operator-(const BigFloat& other) const noexcept;
-
 
 	/// Helper function used by operator+= and operator-=
 	/// Computes sign(this)*(|this|+|other|),
@@ -134,15 +135,21 @@ struct BigFloat {
 	constexpr void operator*=(uint32 other) noexcept;
 	constexpr void operator*=(int32 other) noexcept;
 	constexpr BigFloat operator*(const BigFloat& other) const noexcept;
+	constexpr BigFloat operator*(uint32 other) const noexcept;
+	constexpr BigFloat operator*(int32 other) const noexcept;
 	constexpr void operator/=(const BigFloat& other) noexcept;
 	constexpr void operator/=(uint32 other) noexcept;
 	constexpr void operator/=(int32 other) noexcept;
 	constexpr BigFloat operator/(const BigFloat& other) const noexcept;
+	constexpr BigFloat operator/(uint32 other) const noexcept;
+	constexpr BigFloat operator/(int32 other) const noexcept;
 
 	/// Divides by 2^bits
 	constexpr void operator>>=(int16 bits) noexcept;
+	constexpr BigFloat operator>>(int16 bits) const noexcept;
 	/// Multiplies by 2^bits
 	constexpr void operator<<=(int16 bits) noexcept;
+	constexpr BigFloat operator<<(int16 bits) const noexcept;
 
 	/// Assigns sqrt(other) to this
 	constexpr void sqrt(const BigFloat& other) noexcept;
