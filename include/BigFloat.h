@@ -564,6 +564,11 @@ constexpr BigFloat<THE_N> BigFloat<THE_N>::operator-() const noexcept {
 	f.negative = !f.negative;
 	return f;
 }
+/// Unary plus operator
+template<size_t THE_N>
+constexpr BigFloat<THE_N> BigFloat<THE_N>::operator+() const noexcept {
+	return *this;
+}
 template<size_t THE_N>
 constexpr void BigFloat<THE_N>::operator-=(const BigFloat& other) noexcept {
 	if (negative == other.negative) {
@@ -1193,6 +1198,18 @@ constexpr BigFloat<THE_N> BigFloat<THE_N>::operator*(const BigFloat& other) cons
 	return v;
 }
 template<size_t THE_N>
+constexpr BigFloat<THE_N> BigFloat<THE_N>::operator*(uint32 other) const noexcept {
+	BigFloat<THE_N> v(*this);
+	v *= other;
+	return v;
+}
+template<size_t THE_N>
+constexpr BigFloat<THE_N> BigFloat<THE_N>::operator*(int32 other) const noexcept {
+	BigFloat<THE_N> v(*this);
+	v *= other;
+	return v;
+}
+template<size_t THE_N>
 constexpr void BigFloat<THE_N>::operator/=(const BigFloat& other) noexcept {
 	negative ^= other.negative;
 
@@ -1589,8 +1606,20 @@ constexpr BigFloat<THE_N> BigFloat<THE_N>::operator/(const BigFloat& other) cons
 	v /= other;
 	return v;
 }
+template<size_t THE_N>
+constexpr BigFloat<THE_N> BigFloat<THE_N>::operator/(uint32 other) const noexcept {
+	BigFloat<THE_N> v(*this);
+	v /= other;
+	return v;
+}
+template<size_t THE_N>
+constexpr BigFloat<THE_N> BigFloat<THE_N>::operator/(int32 other) const noexcept {
+	BigFloat<THE_N> v(*this);
+	v /= other;
+	return v;
+}
 
-	/// Divides by 2^bits
+/// Divides by 2^bits
 template<size_t THE_N>
 constexpr void BigFloat<THE_N>::operator>>=(int16 bits) noexcept {
 	if (exponent == EXP_ZERO || exponent == EXP_INF_OR_NAN) {
@@ -1612,6 +1641,12 @@ constexpr void BigFloat<THE_N>::operator>>=(int16 bits) noexcept {
 		return;
 	}
 	exponent = int16(new_exponent);
+}
+template<size_t THE_N>
+constexpr BigFloat<THE_N> BigFloat<THE_N>::operator>>(int16 bits) const noexcept {
+	BigFloat<THE_N> v(*this);
+	v >>= bits;
+	return v;
 }
 /// Multiplies by 2^bits
 template<size_t THE_N>
@@ -1635,6 +1670,12 @@ constexpr void BigFloat<THE_N>::operator<<=(int16 bits) noexcept {
 		return;
 	}
 	exponent = int16(new_exponent);
+}
+template<size_t THE_N>
+constexpr BigFloat<THE_N> BigFloat<THE_N>::operator<<(int16 bits) const noexcept {
+	BigFloat<THE_N> v(*this);
+	v <<= bits;
+	return v;
 }
 
 /// Assigns sqrt(other) to this
