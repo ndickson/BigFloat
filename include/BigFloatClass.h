@@ -163,7 +163,19 @@ struct BigFloat {
 	/// Assigns sin(x) to this
 	/// WARNING: THIS IS NOT READY FOR USE, EXCEPT FOR SMALL x!!!
 	constexpr void sin(const BigFloat& x) noexcept;
+
+	/// Assigns cos(x) to this
+	/// WARNING: THIS IS NOT READY FOR USE, EXCEPT FOR SMALL x!!!
+	constexpr void cos(const BigFloat& x) noexcept;
 };
+
+template<size_t N>
+constexpr BigFloat<N> operator*(uint32 a,const BigFloat<N>& b) noexcept
+{ return b*a; }
+
+template<size_t N>
+constexpr BigFloat<N> operator*(int32 a,const BigFloat<N>& b) noexcept
+{ return b*a; }
 
 namespace constants {
 /// Compile-time constant zero value, in case that's needed
@@ -172,6 +184,9 @@ static constexpr BigFloat<N> zero = BigFloat<N>(typename BigFloat<N>::zero_init(
 /// Compile-time constant one value, in case that's needed
 template<size_t N>
 static constexpr BigFloat<N> one = BigFloat<N>(0,typename BigFloat<N>::pow2_init());
+/// Compile-time constant two value, in case that's needed
+template<size_t N>
+static constexpr BigFloat<N> two = BigFloat<N>(1,typename BigFloat<N>::pow2_init());
 /// Compile-time constant negative one value, in case that's needed
 template<size_t N>
 static constexpr BigFloat<N> negative_one = -BigFloat<N>::one;
