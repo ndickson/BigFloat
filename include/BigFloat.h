@@ -157,6 +157,10 @@ constexpr BigFloat<THE_N>::BigFloat(uint64 v) noexcept : negative(false), expone
 
 template<size_t THE_N>
 constexpr BigFloat<THE_N>& BigFloat<THE_N>::operator=(int64 v) noexcept {
+	negative = false;
+	for (size_t i = 0; i < N; ++i) {
+		mantissa[i] = 0;
+	}
 	if (v == 0) {
 		exponent = EXP_ZERO;
 		return *this;
@@ -181,8 +185,8 @@ constexpr BigFloat<THE_N>& BigFloat<THE_N>::operator=(int64 v) noexcept {
 		if (N > 1) {
 			mantissa[N-2] = uint32(v << (64-top_bit));
 		}
-		mantissa[N-1] = uint32(v >> (top_bit-32));
-		if (N == 1 && ((v >> (top_bit-33))&1)) {
+		mantissa[N-1] = uint32(uint64(v) >> (top_bit-32));
+		if (N == 1 && ((uint64(v) >> (top_bit-33))&1)) {
 			if ((++mantissa[N-1]) == 0) {
 				++exponent;
 			}
