@@ -1977,10 +1977,33 @@ template<size_t THE_N>
 constexpr void BigFloat<THE_N>::sin(const BigFloat& x) noexcept {
 	BigFloat<THE_N> terms[100];
 	terms[0] = x;
+	BigFloat<THE_N> x2 = x;
+	x2 *= x;
 	for (size_t i = 1; i < 100; ++i) {
-		terms[i] = terms[0];
-		terms[i] *= x;
-		terms[i] /= BigFloat((2*i)*(2*i+1));
+		terms[i] = terms[i-1];
+		terms[i] *= x2;
+		terms[i] /= uint32((2*i)*(2*i+1));
+		terms[i].negative = !terms[i].negative;
+	}
+	// Sum from smallest to largest, to reduce roundoff error.
+	*this = terms[99];
+	for (size_t i = 98; i < 100; --i) {
+		*this += terms[i];
+	}
+}
+
+/// Assigns cos(x) to this
+/// WARNING: THIS IS NOT READY FOR USE, EXCEPT FOR SMALL x!!!
+template<size_t THE_N>
+constexpr void BigFloat<THE_N>::cos(const BigFloat& x) noexcept {
+	BigFloat<THE_N> terms[100];
+	terms[0] = 1;
+	BigFloat<THE_N> x2 = x;
+	x2 *= x;
+	for (size_t i = 1; i < 100; ++i) {
+		terms[i] = terms[i-1];
+		terms[i] *= x2;
+		terms[i] /= uint32((2*i-1)*(2*i));
 		terms[i].negative = !terms[i].negative;
 	}
 	// Sum from smallest to largest, to reduce roundoff error.
