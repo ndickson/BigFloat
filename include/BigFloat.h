@@ -49,16 +49,16 @@ constexpr static uint32 BitScanF64(uint64 v) {
 	uint32 count = uint32(!has_32)<<5;
 	v = has_32 ? v : (v>>32);
 	bool has_16 = ((v&0xFFFF) != 0);
-	count = uint32(!has_16)<<4;
+	count += uint32(!has_16)<<4;
 	v = has_16 ? v : (v>>16);
 	bool has_8 = ((v&0xFF) != 0);
-	count = uint32(!has_8)<<3;
+	count += uint32(!has_8)<<3;
 	v = has_8 ? v : (v>>8);
 	bool has_4 = ((v&0xF) != 0);
-	count = uint32(!has_4)<<2;
+	count += uint32(!has_4)<<2;
 	v = has_4 ? v : (v>>4);
 	bool has_2 = ((v&0x3) != 0);
-	count = uint32(!has_2)<<1;
+	count += uint32(!has_2)<<1;
 	v = has_2 ? v : (v>>2);
 	count += !(v&1);
 	return count;
@@ -73,7 +73,7 @@ constexpr static uint32 BitScanR64(uint64 v) {
 	uint32 count = uint32(has_32)<<5;
 	v = has_32 ? (v>>32) : (v);
 	bool has_16 = ((v>>16) != 0);
-	count = uint32(has_16)<<4;
+	count += uint32(has_16)<<4;
 	v = has_16 ? (v>>16) : (v);
 	bool has_8 = ((v>>8) != 0);
 	count += uint32(has_8)<<3;
@@ -283,10 +283,10 @@ BigFloat<THE_N>::BigFloat(double v) noexcept : negative(false), exponent(0), man
 		}
 		exponent = int16(-0x3FE - 52) + int16(top_bit);
 	}
-	for (size_t index = 0; index < N-2; ++index) {
-		mantissa[index] = 0;
-	}
 	if (N > 1) {
+		for (size_t index = 0; index < N-2; ++index) {
+			mantissa[index] = 0;
+		}
 		mantissa[N-2] = uint32(i << 12);
 		mantissa[N-1] = uint32(i >> 20);
 	}
