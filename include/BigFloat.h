@@ -671,18 +671,42 @@ constexpr void BigFloat<THE_N>::addSameSign(const BigFloat& other) noexcept {
 	}
 
 	uint32 carry = 0; // NOTE: Value must be initialized for constexpr; used by one branch below.
+	uint32 nonzero_below_carry = 0;
 	if (exponent_diff == 0) {
 		//carry = 0;
 	}
 	else if (exponent_diff == 32*N+1) {
 		carry = 1;
+
+		// Whether whole expclit part of mantissa is zero
+		// might affect whether the code below needs to round to even.
+		for (size_t i = 0; i < N; ++i) {
+			if (source[i] != 0) {
+				nonzero_below_carry = 1;
+				break;
+			}
+		}
 	}
 	else {
 		uint32 exponent_diff_m1 = (exponent_diff-1);
 		size_t index(exponent_diff_m1>>5);
 		size_t bit(exponent_diff_m1 & 0x1F);
 		carry = (source[index]>>bit)&1;
+		// Whether all lower bits of mantissa are zero
+		// might affect whether the code below needs to round to even.
+		nonzero_below_carry = ((source[index] & ~(uint32(-int32(1))<<bit)) != 0);
+		if (!nonzero_below_carry) {
+			for (size_t i = 0; i < index; ++i) {
+				if (source[i] != 0) {
+					nonzero_below_carry = 1;
+					break;
+				}
+			}
+		}
 	}
+
+	const bool round_half_to_even = carry && !nonzero_below_carry;
+	const uint32 orig_carry = carry;
 
 	size_t source_index0 = (exponent_diff>>5);
 	size_t source_bit_shift = (exponent_diff & 0x1F);
@@ -739,6 +763,13 @@ constexpr void BigFloat<THE_N>::addSameSign(const BigFloat& other) noexcept {
 
 	if (new_mantissa[N] == 1) {
 		exponent = max_exponent;
+
+		if (round_half_to_even) {
+			// Just clear bit 0 of new_mantissa if rounding half to even,
+			// since we previously just rounded half up.
+			new_mantissa[0] &= ~uint32(1);
+		}
+
 		for (size_t i = 0; i < N; ++i) {
 			mantissa[i] = new_mantissa[i];
 		}
@@ -751,7 +782,28 @@ constexpr void BigFloat<THE_N>::addSameSign(const BigFloat& other) noexcept {
 	else {
 		// new_mantissa[N] is 2 or 3.
 		exponent = max_exponent+1;
-		uint32 carry = (new_mantissa[0]&1);
+
+		// Handle possibility of needing to round to even,
+		// taking into account that if orig_carry is 1,
+		// 1 was already added to new_mantissa for that carry.
+		uint32 low_result_bits = (new_mantissa[0]&3);
+		uint32 carry = 0;
+		// If result_bits is 0, it would round to the current
+		// value regardless of orig_carry or nonzero_below_carry.
+		if (low_result_bits != 0) {
+			// Remove the carry that was already added to new_mantissa.
+			low_result_bits -= orig_carry;
+			// Thinking of a 4-bit number consisting of 2 bits in low_result_bits,
+			// 1 bit in orig_carry, and 1 bit in nonzero_below_carry,
+			// 0000-0011 should round down to 0000 (new carry 0)
+			// 0100 should round even down to 0000 (new carry 0)
+			// 0101-0111 or should round up to 1000 (new carry 1)
+			// 1000-1011 should round down to 1000 (new carry 0)
+			// 1100 should round even up to 10000 (new carry 1)
+			// 1101 should round up to 10000 (new carry 1)
+			// 1110-1111 already rounded up, so aren't in this branch.
+			carry = (low_result_bits == 1 && (orig_carry || nonzero_below_carry)) || (low_result_bits == 3);
+		}
 		for (size_t i = 0; i < N; ++i) {
 			uint64 value = uint64((new_mantissa[i]>>1) | (new_mantissa[i+1]<<31)) + carry;
 			carry = uint32(value>>32);
@@ -848,6 +900,8 @@ constexpr void BigFloat<THE_N>::subSameSignStage2(const BigFloat& other) noexcep
 		return;
 	}
 	uint32 exponent_diff = uint32(exponent - other.exponent);
+
+	// FIXME: Change this to round half to even!
 	uint32 carry = 0; // NOTE: Value must be initialized for constexpr; used by one branch below.
 	if (exponent_diff == 0) {
 		//carry = 0;
