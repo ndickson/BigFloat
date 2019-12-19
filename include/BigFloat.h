@@ -1736,6 +1736,86 @@ constexpr BigFloat<THE_N> BigFloat<THE_N>::operator<<(int16 bits) const noexcept
 	return v;
 }
 
+template<size_t THE_N>
+constexpr void BigFloat<THE_N>::roundToNumBits(size_t num_mantissa_bits) noexcept {
+	// If it's intrinsically rounded enough, there's nothing to do.
+	constexpr size_t max_mantissa_bits = N*DATA_TYPE_BITS + 1;
+	if (num_mantissa_bits >= max_mantissa_bits) {
+		return;
+	}
+
+	// Rounding infinity, NaN, or zero, does nothing.
+	if (exponent == EXP_INF_OR_NAN || exponent == EXP_ZERO) {
+		return;
+	}
+
+	// It doesn't make sense to round to zero bits of mantissa, since there's
+	// always the implicit 1.
+	if (num_mantissa_bits <= 0) {
+		num_mantissa_bits = 1;
+	}
+
+	size_t rounding_bit_index = (max_mantissa_bits-1 - num_mantissa_bits);
+	const size_t rounding_index = rounding_bit_index >> LOG_DATA_TYPE_BITS;
+	rounding_bit_index &= (DATA_TYPE_BITS-1);
+	const size_t kept_index = rounding_index + (rounding_bit_index == DATA_TYPE_BITS-1);
+	const size_t kept_bit_index = (rounding_bit_index + 1) & (DATA_TYPE_BITS-1);
+	const DataType rounding_bit = (mantissa[rounding_index]>>rounding_bit_index) & 1;
+	const DataType kept_bit = (kept_index == N) ? 1 : ((mantissa[kept_index]>>kept_bit_index) & 1);
+
+	// Zero out low bits and check if any below the rounding bit were nonzero.
+	bool nonzero_below_rounding = false;
+	for (size_t index = 0; index < rounding_index; ++index) {
+		nonzero_below_rounding |= (mantissa[index] != 0);
+		mantissa[index] = 0;
+	}
+	const DataType zero_mask = (~DataType(0)) >> (DATA_TYPE_BITS-1-rounding_bit_index);
+	const DataType below_rounding_mask = (zero_mask >> 1);
+	nonzero_below_rounding |= ((mantissa[rounding_index] & below_rounding_mask) != 0);
+	mantissa[rounding_index] &= ~zero_mask;
+
+	// Thinking of a 3-bit number consisting of the lowest "kept" bit,
+	// the "rounding bit", and 1 bit for nonzero_below_rounding,
+	// 000-001 should round down to 000 (new carry 0)
+	// 010 should round even down to 000 (new carry 0)
+	// 011 or should round up to 100 (new carry 1)
+	// 100-101 should round down to 100 (new carry 0)
+	// 110 should round even up to 1000 (new carry 1)
+	// 111 should round up to 1000 (new carry 1)
+	DataType carry = rounding_bit & (kept_bit | DataType(nonzero_below_rounding));
+
+	if (carry == 0) {
+		// Carry is zero, so nothing to do.
+		return;
+	}
+
+	if (kept_index == N) {
+		++exponent;
+		if (exponent == EXP_INF_OR_NAN) {
+			mantissa[0] = MANTISSA_INF;
+		}
+		return;
+	}
+
+	// Propagate the carry up
+	carry <<= kept_bit_index;
+	size_t index = kept_index;
+	do {
+		DataType value = mantissa[index];
+		value += carry;
+		carry = (value == 0);
+		mantissa[index] = value;
+		++index;
+		if (index == N && carry != 0) {
+			++exponent;
+			if (exponent == EXP_INF_OR_NAN) {
+				mantissa[0] = MANTISSA_INF;
+			}
+			return;
+		}
+	} while (carry != 0);
+}
+
 /// Assigns sqrt(other) to this
 template<size_t THE_N>
 constexpr void BigFloat<THE_N>::sqrt(const BigFloat& other) noexcept {
