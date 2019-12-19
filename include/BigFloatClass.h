@@ -23,7 +23,14 @@ template<size_t THE_N>
 struct BigFloat {
 	static constexpr size_t N = THE_N;
 
-	uint32 mantissa[N];
+	// NOTE: The mantissa data type can't be 64-bit, because C++ doesn't yield
+	// 128-bit results from multiplication of 64-bit integers, even though
+	// x86 assembly language supports it.
+	using DataType = uint32;
+	static constexpr size_t DATA_TYPE_BITS = sizeof(DataType)*8;
+	static constexpr size_t LOG_DATA_TYPE_BITS = 5;
+
+	DataType mantissa[N];
 	int16 exponent;
 	bool negative;
 
@@ -150,6 +157,10 @@ struct BigFloat {
 	/// Multiplies by 2^bits
 	constexpr void operator<<=(int16 bits) noexcept;
 	constexpr BigFloat operator<<(int16 bits) const noexcept;
+
+	/// Rounds the mantissa to numMantissaBits bits, including the implicit 1 bit.
+	/// This rounds half to even.
+	constexpr void roundToNumBits(size_t numMantissaBits) noexcept;
 
 	/// Assigns sqrt(other) to this
 	constexpr void sqrt(const BigFloat& other) noexcept;
