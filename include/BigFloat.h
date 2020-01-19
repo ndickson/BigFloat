@@ -486,6 +486,7 @@ BigFloat<THE_N>::operator double() const noexcept {
 	}
 	int64 mantissa_bits = (int64(mantissa[N-1])<<20) | (mantissa[N-2]>>12);
 	// Round up if bit after is 1
+	// FIXME: Round half to even, (although it's unlikely to occur with full-precision random source data if N is >= 4).
 	mantissa_bits += ((mantissa[N-2]>>11)&1);
 	if (exponent >= 0x400 || (exponent == 0x3FF && (mantissa_bits==0x0010000000000000ULL))) {
 		// Infinity
@@ -516,6 +517,7 @@ BigFloat<THE_N>::operator float() const noexcept {
 	}
 	int32 mantissa_bits = int32(mantissa[N-1]>>11);
 	// Round up if bit after is 1
+	// FIXME: Round half to even, (although it's unlikely to occur with full-precision random source data if N is >= 3).
 	mantissa_bits += ((mantissa[N-1]>>10)&1);
 	if (exponent >= 0x80 || (exponent == 0x7F && (mantissa_bits==0x00800000))) {
 		// Infinity
@@ -895,33 +897,78 @@ constexpr void BigFloat<THE_N>::subSameSign(const BigFloat& other) noexcept {
 /// and this is strictly larger than other, and neither is zero, infinite, or NaN.
 template<size_t THE_N>
 constexpr void BigFloat<THE_N>::subSameSignStage2(const BigFloat& other) noexcept {
-	if (int32(other.exponent) <= int32(exponent)-int32(32*N)-2) {
+	if (int32(other.exponent) <= int32(exponent)-int32(32*N+3)) {
 		// other is too small to affect this, so no change
 		return;
 	}
 	uint32 exponent_diff = uint32(exponent - other.exponent);
 
-	// FIXME: Change this to round half to even!
-	uint32 carry = 0; // NOTE: Value must be initialized for constexpr; used by one branch below.
+	// We need up to 3 bits of other's mantissa below this mantissa to
+	// round correctly, (i.e. round half to even),
+	// where the lowest bit is 0 if everything below the others is zero,
+	// and it is 1 if anything below the others is nonzero.
+	// NOTE: Values must be initialized for constexpr; values used by some branches below.
+	uint32 bitsBelow = 0;
 	if (exponent_diff == 0) {
-		//carry = 0;
+		//bitsBelow = 0;
+	}
+	else if (exponent_diff == 32*N+2) {
+		uint32 combined = other.mantissa[0];
+		for (size_t i = 1; i < N; ++i) {
+			combined |= other.mantissa[i];
+		}
+		// 001c
+		bitsBelow = uint32(2) + uint32(combined != 0);
 	}
 	else if (exponent_diff == 32*N+1) {
-		carry = 1;
+		constexpr uint32 noTopBitMask = uint32(0x7FFFFFFF);
+		uint32 combined = other.mantissa[N-1] & noTopBitMask;
+		for (size_t i = 0; i < N-1; ++i) {
+			combined |= other.mantissa[i];
+		}
+		// 01xc
+		bitsBelow = uint32(4) + uint32((other.mantissa[N-1] >> 31) << 1) + uint32(combined != 0);
 	}
 	else {
-		uint32 exponent_diff_m1 = (exponent_diff-1);
-		size_t index(exponent_diff_m1>>5);
-		size_t bit(exponent_diff_m1 & 0x1F);
-		carry = (other.mantissa[index]>>bit)&1;
+		// At least one bit of overlap between the mantissas,
+		// and at least one bit of non-overlap.
+		size_t index(exponent_diff>>5);
+		size_t bit(exponent_diff & 0x1F);
+		// Move one bit lower
+		index -= (bit == 0);
+		bit = (bit-1) & 0x1F;
+		bitsBelow = ((other.mantissa[index]>>bit) & 1) << 2;
+		if (exponent_diff > 1) {
+			// Move one bit lower
+			index -= (bit == 0);
+			bit = (bit-1) & 0x1F;
+			bitsBelow |= ((other.mantissa[index]>>bit) & 1) << 1;
+			if (exponent_diff > 2) {
+				// Check if any lower bits are nonzero
+				index -= (bit == 0);
+				bit = (bit-1) & 0x1F;
+				uint32 topBitsMask = (uint32(2) << uint32(bit)) - 1;
+				uint32 combined = (other.mantissa[index] & topBitsMask);
+				for (size_t i = 0; i < index; ++i) {
+					combined |= other.mantissa[i];
+				}
+				bitsBelow |= (combined != 0);
+			}
+		}
 	}
-	const uint32 initial_carry = carry;
+
+	// As if bitsBelow (3 bits) had been subtracted from the corresponding zero in this mantissa.
+	uint32 belowNewMantissa = uint32(-int32(bitsBelow)) & 7;
+	// There's a carry (borrow) if anything nonzero was subtracted from zero.
+	uint32 carry = uint32(bitsBelow != 0);
+
 	uint32 new_mantissa[N+1] = {0}; // NOTE: Value is not used; here for constexpr only!
 	for (size_t i = 0; i < N; ++i) {
 		new_mantissa[i] = mantissa[i];
 	}
 	new_mantissa[N] = 1;
 
+	// Do the main part of the subtraction.
 	const uint32* source = other.mantissa;
 	size_t source_index0 = (exponent_diff>>5);
 	size_t source_bit_shift = (exponent_diff & 0x1F);
@@ -942,7 +989,7 @@ constexpr void BigFloat<THE_N>::subSameSignStage2(const BigFloat& other) noexcep
 				- carry;
 		}
 		else {
-			// NOTE: This case should only happen when exponent_diff == 32*N+1.
+			// NOTE: This case should only happen when exponent_diff == 32*N+1 or 32*N+2.
 			//       We need this codepath just to avoid the out-of-bounds array access above.
 			value = uint64(new_mantissa[i]) - carry;
 		}
@@ -977,13 +1024,58 @@ constexpr void BigFloat<THE_N>::subSameSignStage2(const BigFloat& other) noexcep
 	}
 
 	if (new_mantissa[N] == 1) {
-		// Exponent stays the same.  Copy the mantissa.
+		// Exponent stays the same.
+		// Round up if applicable, (round half to even).
+		uint32 odd = (new_mantissa[0] & 1);
+		// Combine the lowest 2 bits, since only need to check
+		// if nonzero below highest here.
+		if ((belowNewMantissa & 4) != 0 && ((belowNewMantissa & 3) != 0 || odd)) {
+			++new_mantissa[0];
+			carry = (new_mantissa[0] == 0);
+			// NOTE: This should never go out of bounds, or even increment the 1 at new_mantissa[N].
+			for (size_t i = 1; carry; ++i) {
+				++new_mantissa[i];
+				carry = (new_mantissa[i] == 0);
+			}
+		}
+
+		// Copy the mantissa.
 		for (size_t i = 0; i < N; ++i) {
 			mantissa[i] = new_mantissa[i];
 		}
 	}
 	else {
-		// mantissa[N] should be 0, so exponent needs to decrease.
+		// mantissa[N] should be 0, so exponent needs to decrease,
+		// unless rounding undoes it.
+		// NOTE: The only way for the exponent to be decreased by more than 1
+		// is if exponent_diff is zero, in which case there are no bits below,
+		// so we only need one extra bit, though it depends on the
+		// 3 bitsBelowMantissa computed above.
+
+		// First, round up, if applicable, (round half to even).
+		bool odd = (belowNewMantissa & 4) != 0;
+		uint32 bitBelow = 0;
+		if ((belowNewMantissa & 2) != 0 && ((belowNewMantissa & 1) != 0 || odd)) {
+			bitBelow = uint32(!odd);
+			if (odd) {
+				++new_mantissa[0];
+				carry = (new_mantissa[0] == 0);
+				// NOTE: This should never go out of bounds, but it may
+				// increment the 0 at new_mantissa[N], making exactly a power of 2
+				for (size_t i = 1; carry; ++i) {
+					++new_mantissa[i];
+					carry = (new_mantissa[i] == 0);
+				}
+				if (new_mantissa[N] == 1) {
+					// Rounded back up to a power of 2 with the same exponent as before.
+					for (size_t i = 0; i < N; ++i) {
+						mantissa[i] = 0;
+					}
+					return;
+				}
+			}
+		}
+
 		// Find highest set bit.
 		size_t i = N-1;
 		for (; true; --i) {
@@ -991,20 +1083,8 @@ constexpr void BigFloat<THE_N>::subSameSignStage2(const BigFloat& other) noexcep
 				break;
 			}
 			if (i == 0) {
-				// Subtracted to zero.
-				// If initial_carry is 1, that's all that's left, else zero.
-				if (initial_carry) {
-					int32 new_exponent = int32(exponent) - int32(32*N+1);
-					if (new_exponent > int32(EXP_ZERO)) {
-						exponent = int16(new_exponent);
-						for (size_t j = 0; j < N; ++j) {
-							mantissa[j] = 0;
-						}
-						return;
-					}
-				}
-
-				// Zero
+				// Subtracted to zero.  This can only happen if exponent_diff
+				// is 0, so there are no bits below mantissa.
 				exponent = EXP_ZERO;
 				return;
 			}
@@ -1013,6 +1093,7 @@ constexpr void BigFloat<THE_N>::subSameSignStage2(const BigFloat& other) noexcep
 		uint32 exponent_diff = uint32(32*(N-i)) - bit;
 		int32 new_exponent = int32(exponent) - int32(exponent_diff);
 		if (new_exponent <= int32(EXP_ZERO)) {
+			// Underflow
 			exponent = EXP_ZERO;
 			return;
 		}
@@ -1023,17 +1104,17 @@ constexpr void BigFloat<THE_N>::subSameSignStage2(const BigFloat& other) noexcep
 			for (; j+1 <= i; ++j) {
 				mantissa[N-1-j] = ((new_mantissa[i-j]<<(32-bit)) | (new_mantissa[i-j-1]>>bit));
 			}
-			// Add initial_carry bit in position corresponding with its original power,
-			// since there's now room to represent it, and twice its value has been subtracted.
-			mantissa[N-1-j] = ((new_mantissa[i-j]<<(32-bit)) | (initial_carry<<(32-bit-1)));
+			// Add bitBelow bit in position corresponding with its original power,
+			// since there's now room to represent it.
+			mantissa[N-1-j] = ((new_mantissa[i-j]<<(32-bit)) | (bitBelow<<(32-bit-1)));
 		}
 		else {
 			for (; j+1 <= i; ++j) {
 				mantissa[N-1-j] = (new_mantissa[i-j-1]);
 			}
-			// Add initial_carry bit in position corresponding with its original power,
-			// since there's now room to represent it, and twice its value has been subtracted.
-			mantissa[N-1-j] = (initial_carry<<31);
+			// Add bitBelow bit in position corresponding with its original power,
+			// since there's now room to represent it.
+			mantissa[N-1-j] = (bitBelow<<31);
 		}
 		for (++j; j < N; ++j) {
 			mantissa[N-1-j] = 0;
