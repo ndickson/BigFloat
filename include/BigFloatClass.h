@@ -30,12 +30,14 @@ struct BigFloat {
 	static constexpr size_t DATA_TYPE_BITS = sizeof(DataType)*8;
 	static constexpr size_t LOG_DATA_TYPE_BITS = 5;
 
+	using ExponentType = int16;
+
 	DataType mantissa[N];
-	int16 exponent;
+	ExponentType exponent;
 	bool negative;
 
-	static constexpr int16 EXP_INF_OR_NAN = 0x7FFF;
-	static constexpr int16 EXP_ZERO = int16(0x8000);
+	static constexpr ExponentType EXP_INF_OR_NAN = 0x7FFF;
+	static constexpr ExponentType EXP_ZERO = ExponentType(0x8000);
 	static constexpr uint32 MANTISSA_INF = 0;
 	static constexpr uint32 MANTISSA_NAN = 1;
 
@@ -54,12 +56,12 @@ struct BigFloat {
 		constexpr pow2_init() noexcept {};
 		constexpr pow2_init(const pow2_init&) noexcept = default;
 	};
-	constexpr BigFloat(int16 exponent_,pow2_init) noexcept : mantissa{0}, exponent{exponent_}, negative{false} {}
+	constexpr BigFloat(ExponentType exponent_,pow2_init) noexcept : mantissa{0}, exponent{exponent_}, negative{false} {}
 	struct tau_init {
 		constexpr tau_init() noexcept {};
 		constexpr tau_init(const tau_init&) noexcept = default;
 	};
-	constexpr BigFloat(int16 exponent_,tau_init) noexcept : mantissa{0}, exponent{0}, negative{false} {
+	constexpr BigFloat(ExponentType exponent_,tau_init) noexcept : mantissa{0}, exponent{0}, negative{false} {
 		tau();
 		*this <<= exponent_;
 	}
@@ -67,7 +69,7 @@ struct BigFloat {
 		constexpr e_init() noexcept {};
 		constexpr e_init(const e_init&) noexcept = default;
 	};
-	constexpr BigFloat(int16 exponent_,e_init) noexcept : mantissa{0}, exponent{0}, negative{false} {
+	constexpr BigFloat(ExponentType exponent_,e_init) noexcept : mantissa{0}, exponent{0}, negative{false} {
 		e();
 		*this <<= exponent_;
 	}
@@ -152,11 +154,11 @@ struct BigFloat {
 	constexpr BigFloat operator/(int32 other) const noexcept;
 
 	/// Divides by 2^bits
-	constexpr void operator>>=(int16 bits) noexcept;
-	constexpr BigFloat operator>>(int16 bits) const noexcept;
+	constexpr void operator>>=(ExponentType bits) noexcept;
+	constexpr BigFloat operator>>(ExponentType bits) const noexcept;
 	/// Multiplies by 2^bits
-	constexpr void operator<<=(int16 bits) noexcept;
-	constexpr BigFloat operator<<(int16 bits) const noexcept;
+	constexpr void operator<<=(ExponentType bits) noexcept;
+	constexpr BigFloat operator<<(ExponentType bits) const noexcept;
 
 	/// Rounds the mantissa to numMantissaBits bits, including the implicit 1 bit.
 	/// This rounds half to even.
@@ -178,6 +180,15 @@ struct BigFloat {
 	/// Assigns cos(x) to this
 	/// WARNING: THIS IS NOT READY FOR USE, EXCEPT FOR SMALL x!!!
 	constexpr void cos(const BigFloat& x) noexcept;
+
+	/// Assigns exp(x) to this
+	constexpr void exp(const BigFloat& x) noexcept;
+
+	/// Assigns ln(x) to this
+	constexpr void ln(const BigFloat& x) noexcept;
+
+	/// Assigns base^exponent to this
+	constexpr void pow(const BigFloat& base, const BigFloat& expon) noexcept;
 };
 
 template<size_t N>
