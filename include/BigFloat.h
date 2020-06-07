@@ -2232,4 +2232,189 @@ constexpr void BigFloat<THE_N>::cos(const BigFloat& x) noexcept {
 	}
 }
 
+/// Assigns exp(x) to this
+template<size_t THE_N>
+constexpr void BigFloat<THE_N>::exp(const BigFloat& x) noexcept {
+	if (x.exponent == EXP_INF_OR_NAN) {
+		if (x.mantissa[0] == MANTISSA_INF && x.negative) {
+			// e^-infinity = +0
+			negative = false;
+			exponent = EXP_ZERO;
+			return;
+		}
+
+		// If +infinity, output +infinity.  If NaN, output NaN.
+		*this = x;
+		return;
+	}
+
+	constexpr size_t BIGN = THE_N*4 + 1;
+	BigFloat<BIGN> reduced(x);
+	size_t numSquares = 0;
+	constexpr ExponentType maxExponent = -ExponentType(DATA_TYPE_BITS*N)/4;
+	// Reduce the exponent (i.e. divide by a power of two) so that
+	// x is close enough to zero that the truncated Taylor series will be close enough.
+	if (reduced.exponent > maxExponent) {
+		numSquares = size_t(reduced.exponent - maxExponent);
+		reduced.exponent = maxExponent;
+	}
+
+	// sum = 1 + x + (x^2)/2 + (x^3)/6 + (x^4)/24
+	BigFloat<BIGN> sum(0, BigFloat<BIGN>::pow2_init());
+	BigFloat<BIGN> current(reduced);
+	sum += current;
+	current *= reduced;
+	current >>= 1;
+	sum += current;
+	current *= reduced;
+	current /= 3;
+	sum += current;
+	current *= reduced;
+	current /= 4;
+	sum += current;
+
+	// Repeatedly square to reintroduce the removed power of two.
+	for (size_t i = 0; i < numSquares; ++i) {
+		sum *= sum;
+	}
+
+	*this = BigFloat<THE_N>(sum);
+}
+
+/// Assigns ln(x) to this
+template<size_t THE_N>
+constexpr void BigFloat<THE_N>::ln(const BigFloat& x) noexcept {
+	if (x.isZero()) {
+		// ln(0) is negative infinity
+		negative = true;
+		exponent = EXP_INF_OR_NAN;
+		mantissa[0] = MANTISSA_INF;
+		return;
+	}
+	// NOTE: This is checked after checking for zero, since -0 and +0 are treated the same.
+	if (x.negative) {
+		// ln(x) is NaN for negative x
+		negative = false;
+		exponent = EXP_INF_OR_NAN;
+		mantissa[0] = MANTISSA_NAN;
+		return;
+	}
+	if (x.exponent == EXP_INF_OR_NAN) {
+		// If infinity, output infinity.  If NaN, output NaN.
+		*this = x;
+		return;
+	}
+
+	constexpr size_t BIGN = THE_N*4 + 1;
+	BigFloat<BIGN> reduced(x);
+	
+	// Repeatedly square root x until it is close enough to 1.
+	size_t numSquareRoots = 0;
+	while (reduced.exponent < -1 || reduced.exponent > 0) {
+		reduced.sqrt(reduced);
+		++numSquareRoots;
+	}
+	if (reduced.exponent == 0) {
+		// TODO: This might not be a good heuristic for "close enough to 1".
+		while (reduced.mantissa[BIGN-1] != 0) {
+			reduced.sqrt(reduced);
+			++numSquareRoots;
+		}
+	}
+	else { // reduced.exponent == -1
+		// TODO: This might not be a good heuristic for "close enough to 1".
+		while (reduced.mantissa[BIGN-1] != ~DataType(0)) {
+			reduced.sqrt(reduced);
+			++numSquareRoots;
+		}
+	}
+
+	// Compute a power series approximation of ln(x) for x close to 1.
+	// It should converge faster than the Taylor series for ln(x) around 1,
+	// and unlike the Taylor series, converges for all x > 0.
+	// It's based on that ln(x) = ln(1 + (x-1)/(x+1)) - ln(1 - (x-1)/(x+1))
+	// and expanding, combining, and simplifying the Taylor series for each of those logarithms.
+	const BigFloat<BIGN> factor((reduced - constants::one<BIGN>)/(reduced + constants::one<BIGN>));
+	const BigFloat<BIGN> factor2 = factor*factor;
+	BigFloat<BIGN> sum(constants::one<BIGN>);
+	BigFloat<BIGN> currentPower(factor2);
+	// TODO: Is this enough terms in all cases, given the heuristic for "close enough" above?
+	constexpr size_t numTerms = THE_N + 1;
+	for (size_t i = 0; i < numTerms; ++i) {
+		sum += currentPower / uint32(2*i + 1);
+		currentPower *= currentPower;
+	}
+	sum += currentPower / uint32(2*numTerms + 1);
+
+	sum *= factor;
+	sum <<= 1;
+
+	// Multiply by 2*numSquareRoots.
+	sum *= uint32(2*numSquareRoots);
+
+	*this = sum;
+}
+
+template<size_t THE_N>
+constexpr void BigFloat<THE_N>::pow(const BigFloat& base, const BigFloat& expon) noexcept {
+	if (base.isNaN() || expon.isNaN()) {
+		negative = false;
+		exponent = EXP_INF_OR_NAN;
+		mantissa[0] = MANTISSA_NAN;
+		return;
+	}
+	if (base.isZero()) {
+		if (expon.isZero()) {
+			// 0^0 is NaN
+			negative = false;
+			exponent = EXP_INF_OR_NAN;
+			mantissa[0] = MANTISSA_NAN;
+			return;
+		}
+		if (expon.exponent == EXP_INF_OR_NAN && expon.negative) {
+			// (+0)^-infinity = (+infinity)^+infinity = +infinity
+			// (-0)^-infinity = (-infinity)^+infinity = NaN, since the sign is indeterminate
+			negative = false;
+			exponent = EXP_INF_OR_NAN;
+			mantissa[0] = expon.negative ? MANTISSA_NAN : MANTISSA_INF;
+			return;
+		}
+
+		// 0^exponent is 0
+		negative = base.negative;
+		exponent = EXP_ZERO;
+		return;
+	}
+	if (expon.isZero()) {
+		// base^0 is 1
+		negative = false;
+		exponent = 0;
+		for (size_t i = 0; i < THE_N; ++i) {
+			mantissa[i] = 0;
+		}
+		return;
+	}
+
+	if (base.negative) {
+		// Only valid if expon is an integer.
+		// FIXME: Implement this!!!
+
+		// Otherwise NaN
+		negative = false;
+		exponent = EXP_INF_OR_NAN;
+		mantissa[0] = MANTISSA_NAN;
+		return;
+	}
+
+	// Simple case
+	constexpr size_t BIGN = (THE_N*3)/2 + 1;
+	BigFloat<BIGN> lnBase;
+	lnBase.ln(BigFloat<BIGN>(base));
+
+	BigFloat<BIGN> result;
+	result.exp(lnBase*BigFloat<BIGN>(expon));
+
+	*this = BigFloat<THE_N>(result);
+}
+
 }
