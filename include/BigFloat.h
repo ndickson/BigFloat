@@ -1153,7 +1153,7 @@ constexpr void BigFloat<THE_N>::operator*=(const BigFloat& other) noexcept {
 		return;
 	}
 
-	int32 new_exponent = exponent + other.exponent;
+	int32 new_exponent = int32(exponent) + int32(other.exponent);
 
 	constexpr size_t N2 = 2*N+1;
 	uint32 new_mantissa[N2] = {0};
@@ -1172,17 +1172,17 @@ constexpr void BigFloat<THE_N>::operator*=(const BigFloat& other) noexcept {
 			//  (2^32 - 1)^2 + (2^32 - 1) + (2^32 - 1)
 			// = 2^64 - 2(2^32) + 1 + 2(2^32) - 2
 			// = 2^64 - 1, so this is safe, albeit just barely
-			uint64 result = this_value*other.mantissa[other_index] + carry + new_mantissa[this_index + other_index];
+			uint64 result = this_value*other.mantissa[other_index] + uint64(carry) + uint64(new_mantissa[this_index + other_index]);
 			new_mantissa[this_index + other_index] = uint32(result);
 			carry = uint32(result>>32);
 		}
 		// Implicit 1 bit for other mantissa
-		uint64 result = this_value*1 + carry + new_mantissa[this_index+N];
+		uint64 result = this_value*1 + uint64(carry) + uint64(new_mantissa[this_index+N]);
 		new_mantissa[this_index+N] = uint32(result);
 		carry = uint32(result>>32);
 		// Make sure to propagate the carry up as far as necessary
 		for (size_t other_index = N+1; carry; ++other_index) {
-			uint64 result = carry + new_mantissa[this_index+other_index];
+			uint64 result = uint64(carry) + uint64(new_mantissa[this_index+other_index]);
 			new_mantissa[this_index+other_index] = uint32(result);
 			carry = uint32(result>>32);
 		}
@@ -2340,17 +2340,17 @@ constexpr void BigFloat<THE_N>::ln(const BigFloat& x) noexcept {
 	BigFloat<BIGN> currentPower(factor2);
 	// TODO: Is this enough terms in all cases, given the heuristic for "close enough" above?
 	constexpr size_t numTerms = THE_N + 1;
-	for (size_t i = 0; i < numTerms; ++i) {
+	for (size_t i = 1; i < numTerms; ++i) {
 		sum += currentPower / uint32(2*i + 1);
-		currentPower *= currentPower;
+		currentPower *= factor2;
 	}
 	sum += currentPower / uint32(2*numTerms + 1);
 
 	sum *= factor;
 	sum <<= 1;
 
-	// Multiply by 2*numSquareRoots.
-	sum *= uint32(2*numSquareRoots);
+	// Multiply by 2^numSquareRoots.
+	sum <<= ExponentType(numSquareRoots);
 
 	*this = sum;
 }
